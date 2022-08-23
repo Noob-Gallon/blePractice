@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">blePractice</string>
+    <string name="item_address">item_address</string>
+    <string name="item_name">item_name</string>
+    <string name="hey">Hey</string>
+    <string name="scan_button">scan_button</string>
+    <string name="scan">scan</string>
+</resources>
