@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.content.Context
@@ -98,43 +99,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 구문 분석 필요.
-    // Q. 블루투스 스캔은 어떤 기준으로 이루어져야 하는가?
-    // 스캔은 사용자의 디바이스 배터리 소모량을 증가시킨다.
-    // 계속해서 탐색하되, 디바이스를 찾게되면 멈춘다?
-    // 흠... 어떻게 해야되지?
-
     @SuppressLint("MissingPermission") //
-    private fun scanDevice() {
-        // Handler => deprecated.
-        // Handler는 일반적으로 UI 갱신을 위해 사용된다.
-        // Handler() -> Handler(Looper.getMainLooper())
-
-        // bluetoothAdapter?.bluetoothLeScanner?. => BLE scanner를 동작한다.
-
-        // BluetoothAdapter#getBluetoothLeScanner()를 사용하여 BluetoothLeScanner의 instance를 얻을 수 있음.
-        // ScanFilter를 이용하여 특정 BLE Device만 scan할 수 있음.
-
-        // startScan 함수에서 전달되는 값이 항상 true이므로, else는 실행되지 않는다.
-        // 그리고, 이 함수는 1초간 Device를 탐색하고 꺼진다.
-
-        Handler(Looper.getMainLooper()).postDelayed({ // 1초 후에 실행, SCAN_PERIOD = 1초.
+    private fun scanDevice(state:Boolean) = if(state){
+        Handler(Looper.getMainLooper()).postDelayed({
             scanning = false
-
-            // 이와 같은 형태의 scan은
-            // startScan(ScanCallback callback)
-            // Start Bluetooth LE scan with default parameters and no filters.
             bluetoothAdapter?.bluetoothLeScanner?.stopScan(mLeScanCallback)
-            Log.d(TAG, "scanDevice: scan stopped.")
         }, SCAN_PERIOD)
-
-        scanning = true // 현재 BLE Scan 중인지를 나타내는 전역 변수
-        devicesArr.clear() // Devices name을 담는 Array Clear, 시작 전에 Clear를 진행.
+        scanning = true
+        devicesArr.clear()
         bluetoothAdapter?.bluetoothLeScanner?.startScan(mLeScanCallback)
-
-        // Device 자체에서 신호를 내보내는 간격이 있기 때문에, Scan 간격을 늘려야 감지하기 쉽다.
-        Log.d(TAG, "scanDevice: scan for 3 second.")
+    }else{
+        scanning = false
+        bluetoothAdapter?.bluetoothLeScanner?.stopScan(mLeScanCallback)
     }
+
+    private var bleGatt : BluetoothGatt? = null // BluetoothGatt 변수.
+    private var mContext:Context? = null // Toast 알림을 위한 Context 전달.
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -165,6 +145,22 @@ class MainActivity : AppCompatActivity() {
 
         viewManager = LinearLayoutManager(this)
         recyclerViewAdapter = RecyclerViewAdapter(devicesArr)
+
+        mContext = this // mContext는 Toast 알림을 띄우기 위한 Context 전달 변수. onCreate에 this를 하면, Activity가 전달된다?
+        recyclerViewAdapter.mListener = object : RecyclerViewAdapter.OnItemClickListener {
+        // recyclerViewAdapter는 Class RecyclerViewAdapter의 instance...
+
+            // 특정 button이 Click된다면, 그 button의 정보를 통해
+            // target device와 connect하는 코드를 실행한다.
+            override fun onClick(view: View, position: Int) {
+                scanDevice(false)
+                val device = devicesArr[position] // device.get(position)
+                bleGatt = DeviceControlActivity(mContext, bleGatt).connectGatt(device)
+                // bleGatt는 callback, device는 연결할 device.
+                // 아직 bleGatt를 사용하는 코드는 존재하지 않음.
+            }
+        }
+
 
         // 그리고, recyclerView에 접근할 수 있는 변수를 만들고,
         // apply를 이용해 위에서 선언한 값들을 설정해준다.
@@ -227,7 +223,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             // Permission이 만족되었다면, Device를 scan한다.
-            scanDevice() // scanDevice 함수에 true를 전달, 항상 실행?, 바꿈.
+            scanDevice(true) // scanDevice 함수에 true를 전달, 항상 실행?, 바꿈.
         }
 
     }
@@ -323,6 +319,18 @@ class MainActivity : AppCompatActivity() {
 
 @SuppressLint("MissingPermission")
 class RecyclerViewAdapter(private val myDataset: ArrayList<BluetoothDevice>): RecyclerView.Adapter<RecyclerViewAdapter.MyViewHolder > () {
+
+    // OnItemClickListenr를 implement 받는 변수 mListener
+    // onClick이 정의된 instance가 들어가있음.
+    var mListener : OnItemClickListener? = null
+
+    // interface를 class와 class간의 통신에 사용...
+    // fun onClick은 abstract로 만들어 implement 받는 class에서
+    // 정의될 수 있도록 한다.
+    interface OnItemClickListener{
+        fun onClick(view: View, position: Int)
+    }
+
     class MyViewHolder(private val binding: RecyclerviewItemBinding):RecyclerView.ViewHolder(binding.root) {
 
         fun bind(bluetoothDevice: BluetoothDevice) {
@@ -343,8 +351,32 @@ class RecyclerViewAdapter(private val myDataset: ArrayList<BluetoothDevice>): Re
     }
 
     override fun onBindViewHolder(holder: MyViewHolder, position: Int) {
-        holder.bind(myDataset[position])
+        // item이 재활용될 때 사용된다?
+        // 데이터가 스크롤 되어서 맨 위에 있던 ViewHolder 객체가 맨 아래로 이동한다면, 그 레이아웃은 재활용하되,
+        // 데이터는 새롭게 바인딩되는 것이다.
+
+        // 이 때, 새롭게 보여질 데이터의 인덱스는 position이라는 이름으로 사용 가능하다.
+        // 즉, 아래에서 새롭게 올라오는 데이터가 리스트의 20번째 데이터라면 position은 20이 들어오게 된다.
+
+        holder.bind(myDataset[position]) // ViewHolder와 RecylcerView를 bind해준다.
+
+        // mListener가 null이 아닌 경우에 실행된다.
+        // mListener는 onCreate 시에 바로 값이 들어가므로,
+        // Bind되기 전부터 반드시 null이 아니다.
+
+        // Bind할 때 setOnClickListener를 지정해두어야
+        // event 설정 가능?
+
+        // 새롭게 갱신하는 데이터(화면에 보이게 될 것이므로,)에 listener를 달아서
+        // event로 동작하게 한다.
+        // 즉, onBindViewHolder를 거친 data라는 것은,
+        // 현재 화면에 보이게 될 data라는 뜻이므로, onClickListener가 동작해야 한다.
+        if (mListener != null) {
+            holder.itemView.setOnClickListener{v ->
+                mListener?.onClick(v, position)}
+        }
     }
+
     override fun getItemCount() = myDataset.size
 }
 
