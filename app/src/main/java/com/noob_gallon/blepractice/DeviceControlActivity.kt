@@ -4,6 +4,8 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.bluetooth.BluetoothClass.*
+import android.bluetooth.BluetoothGattCharacteristic.PROPERTY_WRITE
+import android.bluetooth.BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE
 import android.content.Context
 import android.os.Build
 import android.os.Handler
@@ -74,14 +76,14 @@ class DeviceControlActivity(private val context: Context?, private var bluetooth
             // 원격 장치에 대한 원격 서비스(Service), 특성(Characteristic) 및 설명자(Descriptor) 목록이 업데이트되었을 때 호출되는 콜백.
             super.onServicesDiscovered(gatt, status)
 
-            when(status) {
+            when (status) {
                 BluetoothGatt.GATT_SUCCESS -> {
                     Log.i(TAG, "Connected to GATT_SUCCESS")
-                    broadcastUpdate("Connected "+ device?.name)
+                    broadcastUpdate("Connected " + device?.name)
                 }
                 else -> {
                     Log.w(TAG, "Device service discovery failed, status: $status")
-                    broadcastUpdate("Fail Connect "+device?.name)
+                    broadcastUpdate("Fail Connect " + device?.name)
                 }
             }
 
@@ -95,21 +97,26 @@ class DeviceControlActivity(private val context: Context?, private var bluetooth
 
             val services = gatt?.services
 
-            if (services != null) {
-                for (service in services) {
-                    val characteristics = service?.characteristics
 
+            if (services != null) {
+                loop@for (service in services) {
+                    val characteristics = service?.characteristics
                     if (characteristics != null) {
                         for (characteristic in characteristics) {
-                            if (characteristic.properties == BluetoothGattCharacteristic.PROPERTY_WRITE or
-                                    BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)
+                            if (characteristic.properties == PROPERTY_WRITE) {
                                 cmdCharacteristic = characteristic
-                            else if (characteristic.properties == BluetoothGattCharacteristic.PROPERTY_NOTIFY)
-                                respCharacteristic = characteristic
+                                break@loop
                             }
                         }
                     }
                 }
+
+            val cmdBytes = ByteArray(2)
+            cmdBytes[0] = 1
+            cmdBytes[1] = 2
+
+            writeCharacteristic(cmdCharacteristic!!, cmdBytes)
+            }
         }
 
         private fun broadcastUpdate(str: String) {

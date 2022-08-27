@@ -95,7 +95,7 @@ class MainActivity : AppCompatActivity() {
                 // result 안에 device라는 이름으로 element들이 담김.
 
                 Log.d(TAG, "onScanResult: ${result}")
-                if(!devicesArr.contains(it.device) && result.device.name.contains("CMS MONITOR")) devicesArr.add(it.device)
+                if(!devicesArr.contains(it.device)) devicesArr.add(it.device)
 
 
                 // List의 크기와 Item이 둘 다 변경되는 경우에 사용된다.
