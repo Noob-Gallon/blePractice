@@ -62,6 +62,13 @@ class DeviceControlActivity(private val context: Context?, private var bluetooth
             }
         }
 
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt?,
+            characteristic: BluetoothGattCharacteristic?
+        ) {
+            super.onCharacteristicChanged(gatt, characteristic)
+        }
+
         @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
             // 원격 장치에 대한 원격 서비스(Service), 특성(Characteristic) 및 설명자(Descriptor) 목록이 업데이트되었을 때 호출되는 콜백.
@@ -79,6 +86,30 @@ class DeviceControlActivity(private val context: Context?, private var bluetooth
             }
 
             gatt?.printGattTable()
+
+            val device = gatt?.device
+            val address = device?.address
+
+            var respCharacteristic: BluetoothGattCharacteristic? = null
+            var cmdCharacteristic: BluetoothGattCharacteristic? = null
+
+            val services = gatt?.services
+
+            if (services != null) {
+                for (service in services) {
+                    val characteristics = service?.characteristics
+
+                    if (characteristics != null) {
+                        for (characteristic in characteristics) {
+                            if (characteristic.properties == BluetoothGattCharacteristic.PROPERTY_WRITE or
+                                    BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)
+                                cmdCharacteristic = characteristic
+                            else if (characteristic.properties == BluetoothGattCharacteristic.PROPERTY_NOTIFY)
+                                respCharacteristic = characteristic
+                            }
+                        }
+                    }
+                }
         }
 
         private fun broadcastUpdate(str: String) {
@@ -122,6 +153,31 @@ class DeviceControlActivity(private val context: Context?, private var bluetooth
                 Log.i(TAG, "\nService ${service.uuid}\nCharacteristics:\n$characteristicsTable")
             }
         }
+
+        override fun onCharacteristicWrite(
+            gatt: BluetoothGatt?,
+            characteristic: BluetoothGattCharacteristic?,
+            status: Int
+        ) {
+            super.onCharacteristicWrite(gatt, characteristic, status)
+
+            with(characteristic) {
+                when(status) {
+                    BluetoothGatt.GATT_SUCCESS -> {
+                        Log.i(TAG, "Wrote to characteristic ${this?.uuid} | value: ${this?.value}")
+                    }
+                    BluetoothGatt.GATT_INVALID_ATTRIBUTE_LENGTH -> {
+                        Log.e(TAG, "Write exceeded connection ATT MTU!")
+                    }
+                    BluetoothGatt.GATT_WRITE_NOT_PERMITTED -> {
+                        Log.e(TAG, "Write not permitted for ${this?.uuid}!", )
+                    }
+                    else -> {
+                        Log.e(TAG, "Characteristic write failed for ${this?.uuid}!, error: $status", )
+                    }
+                }
+            }
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -144,4 +200,32 @@ class DeviceControlActivity(private val context: Context?, private var bluetooth
         }
         return bluetoothGatt
     }
+
+    @SuppressLint("MissingPermission")
+    fun writeCharacteristic(characteristic: BluetoothGattCharacteristic, payload:ByteArray) { // overloading...
+        val writeType = when {
+            characteristic.isWritable() -> BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            characteristic.isWritableWithoutResponse() -> {
+                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+            }
+            else -> error("Characteristic ${characteristic.uuid} cannot be written to")
+        }
+
+        bluetoothGatt?.let { gatt ->
+            characteristic.writeType = writeType
+            characteristic.value = payload
+            gatt.writeCharacteristic(characteristic)
+        } ?: error("Error! bluetoothGatt is null!")
+    }
+
+    // fun BluetoothGattCharacteristic.isReadable():Boolean = containsProperty(BluetoothGattCharacteristic.PROPERTY_READ)
+
+    fun BluetoothGattCharacteristic.isWritable():Boolean = containsProperty(BluetoothGattCharacteristic.PROPERTY_WRITE)
+
+    fun BluetoothGattCharacteristic.isWritableWithoutResponse():Boolean = containsProperty(BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)
+
+    fun BluetoothGattCharacteristic.containsProperty(property : Int):Boolean {
+        return properties and property != 0
+    }
+
 }

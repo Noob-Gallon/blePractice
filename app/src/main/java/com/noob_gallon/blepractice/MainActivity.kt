@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.content.Context
@@ -62,13 +63,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Callback when batch results are delivered.
+        @SuppressLint("MissingPermission")
         override fun onBatchScanResults(results: MutableList<ScanResult>?) {
             super.onBatchScanResults(results)
 
             results?.let {
+                Log.d(TAG, "check_batch")
+
                 // results is not null
                 for (result in it) {
-                    if(!devicesArr.contains(result.device) /* && result.device.name!=null */) devicesArr.add(result.device)
+                    if(!devicesArr.contains(result.device)) devicesArr.add(result.device)
                 }
             }
         }
@@ -80,16 +84,19 @@ class MainActivity : AppCompatActivity() {
         // ScanSettings#CALLBACK_TYPE_FIRST_MATCH (2) or ScanSettings#CALLBACK_TYPE_MATCH_LOST (4)
 
         // 	ScanResult: A Bluetooth LE scan result.
-        @SuppressLint("NotifyDataSetChanged")
+        @SuppressLint("NotifyDataSetChanged", "MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             super.onScanResult(callbackType, result) // 나중에는 Callback에 따른 when statement 작성 필요?
             result?.let {
+                Log.d(TAG, "check")
+
                 // result is not null
                 // scan하면, result에 device가 담김?
                 // result 안에 device라는 이름으로 element들이 담김.
 
                 Log.d(TAG, "onScanResult: ${result}")
-                if(!devicesArr.contains(it.device) /* && it.device.name!=null */ ) devicesArr.add(it.device)
+                if(!devicesArr.contains(it.device) && result.device.name.contains("CMS MONITOR")) devicesArr.add(it.device)
+
 
                 // List의 크기와 Item이 둘 다 변경되는 경우에 사용된다.
                 // 사용하기 가장 간편한 Updating 방법.
@@ -158,6 +165,7 @@ class MainActivity : AppCompatActivity() {
                 bleGatt = DeviceControlActivity(mContext, bleGatt).connectGatt(device)
                 // bleGatt는 callback, device는 연결할 device.
                 // 아직 bleGatt를 사용하는 코드는 존재하지 않음.
+
             }
         }
 
@@ -167,7 +175,7 @@ class MainActivity : AppCompatActivity() {
         // 추가적인 참조 없이 값을 넣을 수 있게 되므로,
         // recyclerView.layoutManager = viewManager
         // recyclerView.adapter = recyclerViewAdapter와 같다.
-        val recyclerView = binding.recyclerView.apply {
+        /* val recyclerView = */ binding.recyclerView.apply {
             layoutManager = viewManager
             adapter = recyclerViewAdapter
         }
@@ -227,6 +235,21 @@ class MainActivity : AppCompatActivity() {
         }
 
     }
+
+//    @SuppressLint("MissingPermission")
+//    fun write() {
+//        val cmdCharacteristic = BluetoothUtils.findCommandCharacteristic(bleGatt!!)
+//        // disconnect if the characteristic is not found
+//
+//        val cmdBytes = ByteArray(2)
+//        cmdBytes[0] = 1
+//        cmdBytes[1] = 2
+//        val success:Boolean = bleGatt?.writeCharacteristic(cmdCharacteristic)
+//
+//        if (!success) {
+//            Log.e(TAG, "Failed to write command")
+//        }
+//    }
 
     fun bluetoothOnOff(){
         if (bluetoothAdapter == null) {
@@ -315,6 +338,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
 }
 
 @SuppressLint("MissingPermission")
